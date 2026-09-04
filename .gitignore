@@ -1,0 +1,9 @@
+# machine state - rebuilt by setup.sh
+prefix/
+logs/
+deps/
+icon/
+config.sh
+*.msix
+*.part
+*.log

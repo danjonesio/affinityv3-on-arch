@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Affinity
+Comment=Affinity by Canva (Wine)
+Exec=@ROOT@/affinity %f
+Icon=affinity
+Terminal=false
+Categories=Graphics;2DGraphics;VectorGraphics;RasterGraphics;Publishing;
+MimeType=application/x-affinity;
+StartupWMClass=affinity.exe
