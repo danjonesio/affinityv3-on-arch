@@ -85,10 +85,9 @@ winetricks --unattended vcrun2022 dotnet48 corefonts tahoma win11 renderer=vulka
 # vkd3d-proton for D3D12 (Affinity's canvas; Wine's built-in d3d12 ghosts stale GPU memory onto the page).
 winetricks --unattended dxvk vkd3d
 wineserver -w
-# UI scale
-wine reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d "$AFFINITY_DPI" /f >/dev/null
-wine reg add "HKCU\\Software\\Wine\\Fonts"  /v LogPixels /t REG_DWORD /d "$AFFINITY_DPI" /f >/dev/null
-wineserver -w
+# UI scale (also applied at every launch so laptop vs ultrawide tracks the monitor)
+rm -f "$WINEPREFIX/.affinity-dpi"
+apply_wine_dpi
 ok "prefix ready (DPI $AFFINITY_DPI)"
 
 # WinRT metadata so the .NET side can resolve Windows.* types

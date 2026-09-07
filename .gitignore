@@ -4,6 +4,7 @@ logs/
 deps/
 icon/
 config.sh
+.empty-ocl/
 *.msix
 *.part
 *.log

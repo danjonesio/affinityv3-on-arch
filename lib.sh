@@ -1,4 +1,6 @@
-# Shared helpers for setup.sh / update.sh. Source after env.sh.
+# Shared helpers for setup.sh / update.sh / the launcher. Source after env.sh.
+[ -n "${_AFFINITY_LIB_LOADED:-}" ] && return 0
+_AFFINITY_LIB_LOADED=1
 
 # ---- upstream sources -------------------------------------------------------
 MSIX_URL="https://downloads.affinity.studio/Affinity%20x64.msix"
@@ -26,6 +28,90 @@ fetch() {
 
 msix_version() { bsdtar -xOf "$1" AppxManifest.xml | grep -oE 'Version="[0-9.]+"' | head -1 | cut -d'"' -f2; }
 newest_msix()  { ls -t "$AFFINITY_ROOT"/*.msix 2>/dev/null | head -1 || true; }
+
+# resolve_display - turn AFFINITY_DPI=auto / DXVK_FRAME_RATE=auto into numbers
+# from the Hyprland monitor Affinity will actually appear on. Wine under Omarchy
+# is XWayland with force_zero_scaling, so LogPixels must be 96 * compositor scale
+# or the UI is tiny on a 2x laptop panel and huge on a 1x ultrawide.
+resolve_display() {
+  local scale hz mon
+  if [ "${AFFINITY_DPI}" != "auto" ] && [ "${DXVK_FRAME_RATE}" != "auto" ] && [ "${VKD3D_FRAME_RATE}" != "auto" ]; then
+    export DXVK_FRAME_RATE VKD3D_FRAME_RATE
+    return 0
+  fi
+  if ! command -v hyprctl >/dev/null || ! command -v python3 >/dev/null; then
+    [ "$AFFINITY_DPI" = "auto" ] && AFFINITY_DPI=96
+    [ "$DXVK_FRAME_RATE" = "auto" ] && DXVK_FRAME_RATE=60
+    [ "$VKD3D_FRAME_RATE" = "auto" ] && VKD3D_FRAME_RATE=60
+    export DXVK_FRAME_RATE VKD3D_FRAME_RATE
+    return 0
+  fi
+  read -r scale hz mon < <(AFFINITY_WORKSPACE="${AFFINITY_WORKSPACE:-}" python3 - <<'PY' || true
+import json, os, subprocess, sys
+
+def load(cmd):
+    try:
+        return json.loads(subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL))
+    except Exception:
+        return None
+
+mons = load(["hyprctl", "monitors", "-j"]) or []
+if not mons:
+    sys.exit(1)
+by_name = {m.get("name"): m for m in mons}
+chosen = None
+ws = os.environ.get("AFFINITY_WORKSPACE") or ""
+if ws:
+    for w in (load(["hyprctl", "workspaces", "-j"]) or []):
+        if str(w.get("id")) == str(ws) or str(w.get("name")) == str(ws):
+            chosen = by_name.get(w.get("monitor"))
+            break
+if chosen is None:
+    chosen = next((m for m in mons if m.get("focused")), None)
+if chosen is None:
+    chosen = max(mons, key=lambda m: (float(m.get("scale") or 1), int(m.get("width") or 0) * int(m.get("height") or 0)))
+scale = float(chosen.get("scale") or 1)
+hz = float(chosen.get("refreshRate") or 60)
+print(f"{scale:.4f} {hz:.3f} {chosen.get('name') or '?'}")
+PY
+  )
+  if [ -z "${scale:-}" ]; then
+    scale=1
+    hz=60
+    mon="?"
+  fi
+  if [ "$AFFINITY_DPI" = "auto" ]; then
+    AFFINITY_DPI=$(python3 -c "print(max(96, min(288, int(round(96 * float('$scale'))))))")
+  fi
+  local hz_i
+  hz_i=$(python3 -c "print(max(30, min(240, int(round(float('$hz'))))))")
+  [ "$DXVK_FRAME_RATE" = "auto" ] && DXVK_FRAME_RATE=$hz_i
+  [ "$VKD3D_FRAME_RATE" = "auto" ] && VKD3D_FRAME_RATE=$hz_i
+  export DXVK_FRAME_RATE VKD3D_FRAME_RATE
+  ok "display $mon  scale ${scale}x → DPI $AFFINITY_DPI @ ${DXVK_FRAME_RATE} Hz"
+}
+
+# apply_wine_dpi - write LogPixels if it changed. Wine reads this at process start.
+apply_wine_dpi() {
+  local dpi="${AFFINITY_DPI:-}" stamp="$WINEPREFIX/.affinity-dpi"
+  [[ "$dpi" =~ ^[0-9]+$ ]] || return 0
+  [ -d "$WINEPREFIX" ] || return 0
+  if [ "$(cat "$stamp" 2>/dev/null)" = "$dpi" ]; then
+    return 0
+  fi
+  if pgrep -f '[A]ffinity\.exe' >/dev/null; then
+    say "DPI $dpi: stopping running Affinity so the new scale applies"
+    wineserver -k || true
+    wineserver -w || true
+    sleep 1
+  fi
+  say "setting Wine DPI to $dpi"
+  wine reg add "HKCU\\Control Panel\\Desktop" /v LogPixels /t REG_DWORD /d "$dpi" /f >/dev/null
+  wine reg add "HKCU\\Software\\Wine\\Fonts"  /v LogPixels /t REG_DWORD /d "$dpi" /f >/dev/null
+  echo "$dpi" > "$stamp"
+  wineserver -w || true
+  ok "Wine DPI $dpi"
+}
 
 # gpu_vendor -> nvidia | amd | intel | unknown
 gpu_vendor() {

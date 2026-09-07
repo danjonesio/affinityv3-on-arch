@@ -11,7 +11,7 @@ everything except the optional Hyprland window rules is plain Arch.
 
 ```sh
 git clone <this repo> ~/affinity && cd ~/affinity
-cp config.example.sh config.sh      # optional: DPI, workspace, frame cap
+cp config.example.sh config.sh      # optional: workspace, DPI override (auto by default)
 ./setup.sh                          # ~10 min; asks for sudo once (packages, ntsync)
 ./affinity                          # or launch "Affinity" from your app menu
 ```
@@ -30,13 +30,14 @@ On Hyprland (Omarchy): `./setup.sh --hyprland` also appends window rules to `~/.
 | `./affinity [file]` | launch (logs in `logs/`, last 20 kept) |
 | `./update.sh --check` | is there a newer Affinity build on the server? |
 | `./update.sh --download` | fetch and install it (previous build kept for `--rollback`) |
-| `./setup.sh` | re-apply after editing `config.sh` (e.g. DPI) |
+| `./setup.sh` | re-apply after editing `config.sh` (DPI is applied on launch; no re-setup needed) |
 | `AFFINITY_WINE=system ./affinity` | run on the distro's Wine instead of the bundled build |
 
 ## What works
 
 - Vector / Pixel / Layout personas, documents, export, live filters
-- Renderer on the GPU (Direct3D 12 via vkd3d-proton), **OpenCL compute acceleration** (Settings → Performance)
+- Renderer on the GPU (Direct3D 12 via vkd3d-proton). **OpenCL compute acceleration** on NVIDIA
+  (Settings → Performance); Intel OpenCL is off by default because it hangs the splash.
 - Sharp UI with ClearType and DPI scaling, colour picker under Wayland, panels, shortcuts
 
 ## What doesn't
@@ -80,7 +81,14 @@ On Hyprland (Omarchy): `./setup.sh --hyprland` also appends window rules to `~/.
 ## Hardware notes
 
 - NVIDIA: `opencl-nvidia` is installed for you. Tested on an RTX 3080.
-- AMD / Intel: `setup.sh` installs `rocm-opencl-runtime` / `intel-compute-runtime`; untested — reports welcome.
+- Intel: `intel-compute-runtime` is installed but **OpenCL is disabled at launch**.
+  On Lunar Lake (Arc 130V/140V) Intel NEO + vkd3d D3D12 sharing hangs the splash
+  so the window cannot be closed. `env.sh` hides the OpenCL ICD, forces D3D12 FL 12.0,
+  and disables `VK_KHR_present_wait`. The canvas still renders on the GPU via D3D12;
+  set `AFFINITY_OPENCL=1` in `config.sh` to retry compute. Hyprland rules
+  (`./setup.sh --hyprland`) are required or the XWayland window is composited
+  fully transparent.
+- AMD: `setup.sh` installs `rocm-opencl-runtime`; same present_wait workaround as Intel.
 - vkd3d-proton needs a Vulkan 1.3 capable GPU and driver.
 
 ## Troubleshooting
@@ -88,9 +96,19 @@ On Hyprland (Omarchy): `./setup.sh --hyprland` also appends window rules to `~/.
 - **Affinity won't start, no window** — an earlier instance may be hung (Affinity is single-instance):
   `pkill -9 -f '[A]ffinity\.exe'; pkill -9 -x wineserver`, then launch again. Look at the newest file in
   `logs/`.
+- **Stuck on the splash, window won't close** — usually Intel OpenCL (NEO hanging on D3D12 sharing)
+  or a leftover hung instance. Kill it with the command above. `env.sh` now hides the Intel ICD
+  unless `AFFINITY_OPENCL=1`. On Hyprland, run `./setup.sh --hyprland` so the XWayland window is
+  forced opaque; without those rules the main window is invisible and eats input.
 - **Hardware acceleration says "Unsupported Graphics Card"** — you're on the system Wine
   (`AFFINITY_WINE=system`) or the OpenCL runtime package isn't installed.
-- **UI too small/large** — set `AFFINITY_DPI` in `config.sh` (96/120/144), re-run `./setup.sh`.
+- **UI too small/large** — Omarchy runs XWayland unscaled (`force_zero_scaling`), so Wine
+  must use `LogPixels = 96 × monitor scale`. Default is `AFFINITY_DPI=auto`, which reads
+  the Hyprland scale of the workspace Affinity opens on (this 2x laptop panel → 192).
+  Pin a number in `config.sh` if you want it bigger/smaller; it applies on the next
+  launch, no `./setup.sh`. `config.sh` is gitignored, so the desktop 3080 and this
+  laptop can disagree. An ultrawide is picked up automatically if workspace 5 lives
+  on that monitor — relaunch after you plug it in.
 - **Long sessions** — one 16-minute session was seen exhausting X resource IDs (`_XAllocID` assertion)
   and hanging; the frame cap was added afterwards and it hasn't recurred. If you can reproduce it,
   `xrestop` output over time would help.

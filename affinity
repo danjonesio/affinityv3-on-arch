@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Launch Affinity 3 in its Wine prefix. Extra args are files to open (Linux paths are converted).
 source "$(dirname "$0")/env.sh"
+apply_wine_dpi
 mkdir -p "$AFFINITY_ROOT/logs"
 ls -t "$AFFINITY_ROOT"/logs/affinity-*.log 2>/dev/null | tail -n +21 | xargs -r rm -f
 LOG="$AFFINITY_ROOT/logs/affinity-$(date +%Y%m%d-%H%M%S).log"
