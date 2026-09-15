@@ -13,6 +13,9 @@ o.window({ class = "^(affinity\\.exe)$" }, {
 })
 -- Dialogs (Welcome, Settings, New Document, splash - anything not titled plain "Affinity") float.
 -- RE2 has no lookahead; "negative:" inverts the match. Empty-title splash/Welcome is included.
-o.window({ class = "^(affinity\\.exe)$", title = "negative:^Affinity$" }, { float = true, center = true })
+-- No "center": menus and combo-box popups are override-redirect X11 windows with the same class
+-- and an empty title, and Hyprland >= 0.56 applies the rule to them too, dropping every dropdown
+-- in the middle of the screen. Wine already centres real dialogs over their owner window.
+o.window({ class = "^(affinity\\.exe)$", title = "negative:^Affinity$" }, { float = true })
 -- Main window on its own workspace (edit the number, or delete this line).
 o.window({ class = "^(affinity\\.exe)$" }, { workspace = "@WORKSPACE@" })
