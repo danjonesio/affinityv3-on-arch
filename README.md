@@ -104,9 +104,14 @@ On Hyprland (Omarchy): `./setup.sh --hyprland` also appends window rules to `~/.
   (`AFFINITY_WINE=system`) or the OpenCL runtime package isn't installed.
 - **UI too small/large** — Omarchy runs XWayland unscaled (`force_zero_scaling`), so Wine
   must use `LogPixels = 96 × monitor scale`. Default is `AFFINITY_DPI=auto`, which reads
-  the Hyprland scale of the workspace Affinity opens on (this 2x laptop panel → 192).
-  Pin a number in `config.sh` if you want it bigger/smaller; it applies on the next
-  launch, no `./setup.sh`. `config.sh` is gitignored, so the desktop 3080 and this
+  the Hyprland scale of the workspace Affinity opens on, then caps it so the New Document
+  dialog still fits the monitor's usable area (this 2880x1800 laptop panel at 2x is only
+  1440x900 logical, so it gets 168 rather than 192). Pin a number in `config.sh` if you
+  want it bigger/smaller; it applies on the next launch, no `./setup.sh`.
+- **Dialogs poke behind the top bar, combo-box menus open in the middle of the screen** —
+  the DPI is too high for the screen: the New Document window is larger than the desktop,
+  Hyprland centres it over the bar and WPF has nowhere to anchor its popups. Auto DPI now
+  prevents this; if you pinned `AFFINITY_DPI`, lower it a step. `config.sh` is gitignored, so the desktop 3080 and this
   laptop can disagree. An ultrawide is picked up automatically if workspace 5 lives
   on that monitor — relaunch after you plug it in.
 - **Long sessions** — one 16-minute session was seen exhausting X resource IDs (`_XAllocID` assertion)

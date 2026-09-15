@@ -33,8 +33,17 @@ newest_msix()  { ls -t "$AFFINITY_ROOT"/*.msix 2>/dev/null | head -1 || true; }
 # from the Hyprland monitor Affinity will actually appear on. Wine under Omarchy
 # is XWayland with force_zero_scaling, so LogPixels must be 96 * compositor scale
 # or the UI is tiny on a 2x laptop panel and huge on a 1x ultrawide.
+#
+# The scale alone is not enough: a 2880x1800 panel at 2x is only 1440x900 logical,
+# and at 192 DPI Affinity's New Document dialog (about 1450x910 Wine px at 96 DPI
+# once it is scaled) is bigger than the whole screen. Hyprland then centres it over
+# the bar and WPF, finding no room to anchor its combo-box popups, drops them in
+# the middle of the screen. So auto DPI is also capped so that dialog fits in the
+# monitor's usable area (minus reserved bar space), rounded down to a Wine step.
+AFFINITY_MIN_DIALOG_W=1472   # New Document dialog + margin, in 96-DPI pixels
+AFFINITY_MIN_DIALOG_H=928
 resolve_display() {
-  local scale hz mon
+  local scale hz mon usable_w usable_h
   if [ "${AFFINITY_DPI}" != "auto" ] && [ "${DXVK_FRAME_RATE}" != "auto" ] && [ "${VKD3D_FRAME_RATE}" != "auto" ]; then
     export DXVK_FRAME_RATE VKD3D_FRAME_RATE
     return 0
@@ -46,7 +55,7 @@ resolve_display() {
     export DXVK_FRAME_RATE VKD3D_FRAME_RATE
     return 0
   fi
-  read -r scale hz mon < <(AFFINITY_WORKSPACE="${AFFINITY_WORKSPACE:-}" python3 - <<'PY' || true
+  read -r scale hz mon usable_w usable_h < <(AFFINITY_WORKSPACE="${AFFINITY_WORKSPACE:-}" python3 - <<'PY' || true
 import json, os, subprocess, sys
 
 def load(cmd):
@@ -72,23 +81,41 @@ if chosen is None:
     chosen = max(mons, key=lambda m: (float(m.get("scale") or 1), int(m.get("width") or 0) * int(m.get("height") or 0)))
 scale = float(chosen.get("scale") or 1)
 hz = float(chosen.get("refreshRate") or 60)
-print(f"{scale:.4f} {hz:.3f} {chosen.get('name') or '?'}")
+# reserved = [left, top, right, bottom] in logical px; usable area in physical px
+res = chosen.get("reserved") or [0, 0, 0, 0]
+w = int(chosen.get("width") or 0); h = int(chosen.get("height") or 0)
+if int(chosen.get("transform") or 0) % 2 == 1:
+    w, h = h, w
+usable_w = max(0, w - int((res[0] + res[2]) * scale))
+usable_h = max(0, h - int((res[1] + res[3]) * scale))
+print(f"{scale:.4f} {hz:.3f} {chosen.get('name') or '?'} {usable_w} {usable_h}")
 PY
   )
   if [ -z "${scale:-}" ]; then
     scale=1
     hz=60
     mon="?"
+    usable_w=0
+    usable_h=0
   fi
   if [ "$AFFINITY_DPI" = "auto" ]; then
-    AFFINITY_DPI=$(python3 -c "print(max(96, min(288, int(round(96 * float('$scale'))))))")
+    AFFINITY_DPI=$(python3 - "$scale" "${usable_w:-0}" "${usable_h:-0}" "$AFFINITY_MIN_DIALOG_W" "$AFFINITY_MIN_DIALOG_H" <<'PY'
+import sys
+scale, uw, uh, dw, dh = (float(a) for a in sys.argv[1:])
+want = 96 * scale
+if uw > 0 and uh > 0:
+    want = min(want, 96 * uw / dw, 96 * uh / dh)
+steps = [96, 120, 144, 168, 192, 216, 240, 264, 288]
+print(max([d for d in steps if d <= want] or [96]))
+PY
+    )
   fi
   local hz_i
   hz_i=$(python3 -c "print(max(30, min(240, int(round(float('$hz'))))))")
   [ "$DXVK_FRAME_RATE" = "auto" ] && DXVK_FRAME_RATE=$hz_i
   [ "$VKD3D_FRAME_RATE" = "auto" ] && VKD3D_FRAME_RATE=$hz_i
   export DXVK_FRAME_RATE VKD3D_FRAME_RATE
-  ok "display $mon  scale ${scale}x → DPI $AFFINITY_DPI @ ${DXVK_FRAME_RATE} Hz"
+  ok "display $mon  scale ${scale}x usable ${usable_w:-?}x${usable_h:-?} → DPI $AFFINITY_DPI @ ${DXVK_FRAME_RATE} Hz"
 }
 
 # apply_wine_dpi - write LogPixels if it changed. Wine reads this at process start.

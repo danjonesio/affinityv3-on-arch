@@ -1,8 +1,8 @@
 # Copy to config.sh and edit. Every value is optional. config.sh is gitignored so
 # each machine keeps its own (laptop vs desktop vs ultrawide dock).
 
-# UI scale. auto = 96 × Hyprland scale of the monitor Affinity opens on
-# (Omarchy XWayland is unscaled, so this is what keeps the UI matching the desktop).
+# UI scale. auto = 96 × Hyprland scale of the target monitor, capped so the New Document
+# dialog fits the screen (this 2880x1800 laptop panel at 2x → 168, not 192).
 # Pin 96 / 120 / 144 / 192 / 240 to override.
 AFFINITY_DPI=auto
 
